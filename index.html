@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auto Background Reloader</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 700px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #333;
+            margin: 0 0 10px 0;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 20px;
+        }
+        input {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        button:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+        }
+        button.stop {
+            background: #f44336;
+        }
+        button.stop:hover {
+            background: #da190b;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: bold;
+        }
+        .status.active {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.inactive {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .info {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+        }
+        .countdown {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+            text-align: center;
+            margin: 15px 0;
+        }
+        iframe {
+            width: 100%;
+            height: 500px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+        .iframe-container {
+            position: relative;
+        }
+        .iframe-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 10px;
+            background: rgba(102, 126, 234, 0.9);
+            color: white;
+            text-align: center;
+            font-weight: bold;
+            border-radius: 8px 8px 0 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 Auto Background Reloader</h1>
+        <p class="subtitle">Reloads your link in the background every 10 minutes</p>
+        
+        <label for="url"><strong>Enter URL:</strong></label>
+        <input type="url" id="url" placeholder="https://example.com" value="https://embedraxisai.web.app/">
+        
+        <label for="interval"><strong>Interval (minutes):</strong></label>
+        <input type="number" id="interval" value="10" min="0.1" max="1440" step="0.5">
+        
+        <div>
+            <button onclick="startAutoReload()">▶️ Start Auto-Reload</button>
+            <button class="stop" onclick="stopAutoReload()">⏹️ Stop</button>
+        </div>
+        
+        <div id="status" class="status inactive">
+            Status: Inactive
+        </div>
+
+        <div class="countdown" id="countdown">--:--</div>
+        
+        <div class="info">
+            <div class="info-row">
+                <span><strong>Total Reloads:</strong></span>
+                <span id="reloadCount">0</span>
+            </div>
+            <div class="info-row">
+                <span><strong>Last Reload:</strong></span>
+                <span id="lastReload">Never</span>
+            </div>
+            <div class="info-row">
+                <span><strong>Next Reload:</strong></span>
+                <span id="nextReload">Not scheduled</span>
+            </div>
+        </div>
+
+        <div class="iframe-container">
+            <div class="iframe-overlay">🌐 Live Preview (reloads automatically)</div>
+            <iframe id="targetFrame" src="" title="Auto-reloading content"></iframe>
+        </div>
+    </div>
+
+    <script>
+        let intervalId = null;
+        let countdownId = null;
+        let reloadCount = 0;
+        let nextReloadTime = null;
+
+        function startAutoReload() {
+            const url = document.getElementById('url').value;
+            const interval = parseFloat(document.getElementById('interval').value) * 60 * 1000; // Convert to milliseconds
+            
+            if (!url || !url.startsWith('http')) {
+                alert('Please enter a valid URL starting with http:// or https://');
+                return;
+            }
+
+            if (interval < 6000) { // Less than 6 seconds
+                if (!confirm('Warning: Very short intervals may cause performance issues. Continue?')) {
+                    return;
+                }
+            }
+
+            // Stop any existing interval
+            stopAutoReload();
+
+            // Load immediately
+            reloadFrame(url);
+
+            // Set up recurring reloads
+            intervalId = setInterval(() => {
+                reloadFrame(url);
+            }, interval);
+
+            // Update status and start countdown
+            updateStatus(true, interval);
+            startCountdown(interval);
+        }
+
+        function stopAutoReload() {
+            if (intervalId) {
+                clearInterval(intervalId);
+                intervalId = null;
+            }
+            if (countdownId) {
+                clearInterval(countdownId);
+                countdownId = null;
+            }
+            updateStatus(false);
+            document.getElementById('countdown').textContent = '--:--';
+        }
+
+        function reloadFrame(url) {
+            const iframe = document.getElementById('targetFrame');
+            iframe.src = url + '?t=' + Date.now(); // Add timestamp to prevent caching
+            
+            reloadCount++;
+            document.getElementById('reloadCount').textContent = reloadCount;
+            
+            const now = new Date();
+            document.getElementById('lastReload').textContent = now.toLocaleTimeString();
+            
+            console.log(`Reloaded: ${url} at ${now.toLocaleTimeString()}`);
+        }
+
+        function startCountdown(interval) {
+            const endTime = Date.now() + interval;
+            
+            countdownId = setInterval(() => {
+                const remaining = endTime - Date.now();
+                
+                if (remaining <= 0) {
+                    return;
+                }
+                
+                const minutes = Math.floor(remaining / 60000);
+                const seconds = Math.floor((remaining % 60000) / 1000);
+                
+                document.getElementById('countdown').textContent = 
+                    `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            }, 100);
+        }
+
+        function updateStatus(active, interval = 0) {
+            const statusDiv = document.getElementById('status');
+            const nextReloadSpan = document.getElementById('nextReload');
+            
+            if (active) {
+                statusDiv.className = 'status active';
+                statusDiv.textContent = 'Status: Active ✅ (Running in background)';
+                
+                const next = new Date(Date.now() + interval);
+                nextReloadSpan.textContent = next.toLocaleTimeString();
+            } else {
+                statusDiv.className = 'status inactive';
+                statusDiv.textContent = 'Status: Inactive ❌';
+                nextReloadSpan.textContent = 'Not scheduled';
+            }
+        }
+
+        // Keep track of visibility for background operation
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                console.log('Tab is now in background - auto-reload continues');
+            } else {
+                console.log('Tab is now visible');
+            }
+        });
+
+        // Reset count on page load
+        window.addEventListener('load', () => {
+            reloadCount = 0;
+            document.getElementById('reloadCount').textContent = reloadCount;
+        });
+    </script>
+</body>
+</html>
