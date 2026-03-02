@@ -90,11 +90,12 @@
             margin: 5px 0;
         }
         .countdown {
-            font-size: 24px;
+            font-size: 32px;
             font-weight: bold;
             color: #667eea;
             text-align: center;
             margin: 15px 0;
+            font-family: 'Courier New', monospace;
         }
         iframe {
             width: 100%;
@@ -117,13 +118,21 @@
             text-align: center;
             font-weight: bold;
             border-radius: 8px 8px 0 0;
+            z-index: 10;
+        }
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🔄 Auto Background Reloader</h1>
-        <p class="subtitle">Reloads your link in the background every 10 minutes</p>
+        <p class="subtitle">Reloads your link in the background every 10 minutes (runs infinitely)</p>
         
         <label for="url"><strong>Enter URL:</strong></label>
         <input type="url" id="url" placeholder="https://example.com" value="https://embedraxisai.web.app/">
@@ -155,10 +164,14 @@
                 <span><strong>Next Reload:</strong></span>
                 <span id="nextReload">Not scheduled</span>
             </div>
+            <div class="info-row">
+                <span><strong>Running Since:</strong></span>
+                <span id="startTime">--</span>
+            </div>
         </div>
 
         <div class="iframe-container">
-            <div class="iframe-overlay">🌐 Live Preview (reloads automatically)</div>
+            <div class="iframe-overlay pulse">🌐 Live Preview (auto-reloading)</div>
             <iframe id="targetFrame" src="" title="Auto-reloading content"></iframe>
         </div>
     </div>
@@ -167,18 +180,21 @@
         let intervalId = null;
         let countdownId = null;
         let reloadCount = 0;
-        let nextReloadTime = null;
+        let nextReloadTimestamp = null;
+        let intervalDuration = 0;
+        let isRunning = false;
 
         function startAutoReload() {
             const url = document.getElementById('url').value;
-            const interval = parseFloat(document.getElementById('interval').value) * 60 * 1000; // Convert to milliseconds
+            const intervalMinutes = parseFloat(document.getElementById('interval').value);
+            intervalDuration = intervalMinutes * 60 * 1000; // Convert to milliseconds
             
             if (!url || !url.startsWith('http')) {
                 alert('Please enter a valid URL starting with http:// or https://');
                 return;
             }
 
-            if (interval < 6000) { // Less than 6 seconds
+            if (intervalDuration < 6000) { // Less than 6 seconds
                 if (!confirm('Warning: Very short intervals may cause performance issues. Continue?')) {
                     return;
                 }
@@ -187,17 +203,23 @@
             // Stop any existing interval
             stopAutoReload();
 
-            // Load immediately
+            // Mark as running
+            isRunning = true;
+
+            // Set start time
+            document.getElementById('startTime').textContent = new Date().toLocaleTimeString();
+
+            // Load immediately first time
             reloadFrame(url);
 
             // Set up recurring reloads
             intervalId = setInterval(() => {
                 reloadFrame(url);
-            }, interval);
+            }, intervalDuration);
 
             // Update status and start countdown
-            updateStatus(true, interval);
-            startCountdown(interval);
+            updateStatus(true);
+            startCountdown();
         }
 
         function stopAutoReload() {
@@ -209,13 +231,16 @@
                 clearInterval(countdownId);
                 countdownId = null;
             }
+            isRunning = false;
             updateStatus(false);
             document.getElementById('countdown').textContent = '--:--';
+            document.getElementById('startTime').textContent = '--';
         }
 
         function reloadFrame(url) {
             const iframe = document.getElementById('targetFrame');
-            iframe.src = url + '?t=' + Date.now(); // Add timestamp to prevent caching
+            // Add timestamp to prevent caching
+            iframe.src = url + '?cachebust=' + Date.now();
             
             reloadCount++;
             document.getElementById('reloadCount').textContent = reloadCount;
@@ -223,16 +248,36 @@
             const now = new Date();
             document.getElementById('lastReload').textContent = now.toLocaleTimeString();
             
-            console.log(`Reloaded: ${url} at ${now.toLocaleTimeString()}`);
+            // Set next reload time
+            nextReloadTimestamp = Date.now() + intervalDuration;
+            document.getElementById('nextReload').textContent = new Date(nextReloadTimestamp).toLocaleTimeString();
+            
+            console.log(`✅ Reloaded #${reloadCount}: ${url} at ${now.toLocaleTimeString()}`);
         }
 
-        function startCountdown(interval) {
-            const endTime = Date.now() + interval;
+        function startCountdown() {
+            // Clear any existing countdown
+            if (countdownId) {
+                clearInterval(countdownId);
+            }
+
+            // Set initial next reload timestamp
+            nextReloadTimestamp = Date.now() + intervalDuration;
             
             countdownId = setInterval(() => {
-                const remaining = endTime - Date.now();
+                if (!isRunning) {
+                    return;
+                }
+
+                const remaining = nextReloadTimestamp - Date.now();
+                
+                // If countdown reaches zero, it means reload happened
+                // The countdown will automatically reset because nextReloadTimestamp 
+                // is updated in reloadFrame()
                 
                 if (remaining <= 0) {
+                    // Display 00:00 briefly then it will reset
+                    document.getElementById('countdown').textContent = '00:00';
                     return;
                 }
                 
@@ -241,32 +286,37 @@
                 
                 document.getElementById('countdown').textContent = 
                     `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-            }, 100);
+            }, 100); // Update every 100ms for smooth countdown
         }
 
-        function updateStatus(active, interval = 0) {
+        function updateStatus(active) {
             const statusDiv = document.getElementById('status');
-            const nextReloadSpan = document.getElementById('nextReload');
             
             if (active) {
                 statusDiv.className = 'status active';
-                statusDiv.textContent = 'Status: Active ✅ (Running in background)';
-                
-                const next = new Date(Date.now() + interval);
-                nextReloadSpan.textContent = next.toLocaleTimeString();
+                statusDiv.textContent = '✅ Status: Active (Running infinitely in background)';
             } else {
                 statusDiv.className = 'status inactive';
-                statusDiv.textContent = 'Status: Inactive ❌';
-                nextReloadSpan.textContent = 'Not scheduled';
+                statusDiv.textContent = '❌ Status: Inactive';
+                document.getElementById('nextReload').textContent = 'Not scheduled';
             }
         }
 
         // Keep track of visibility for background operation
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
-                console.log('Tab is now in background - auto-reload continues');
+                console.log('🌙 Tab is now in background - auto-reload continues running');
             } else {
-                console.log('Tab is now visible');
+                console.log('☀️ Tab is now visible');
+            }
+        });
+
+        // Prevent accidental page close when running
+        window.addEventListener('beforeunload', (e) => {
+            if (isRunning) {
+                e.preventDefault();
+                e.returnValue = 'Auto-reload is running. Are you sure you want to leave?';
+                return e.returnValue;
             }
         });
 
